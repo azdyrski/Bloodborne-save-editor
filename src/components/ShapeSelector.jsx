@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../utils/backend";
 import { useEffect, useState, useContext } from "react";
 import { SaveContext } from "../context/context";
 

@@ -30,9 +30,18 @@ pub struct SaveData {
 
 impl SaveData {
     pub fn build(save_path: &str, resources_path: PathBuf) -> Result<SaveData, Error> {
-        let mut file = FileData::build(save_path, resources_path)?;
-        let stats = stats::new(&file).unwrap();
-        let bosses = bosses::new(&file).unwrap();
+        let file = FileData::build(save_path, resources_path)?;
+        SaveData::from_file(file)
+    }
+
+    pub fn from_bytes(bytes: Vec<u8>) -> Result<SaveData, Error> {
+        let file = FileData::from_bytes(bytes, PathBuf::new())?;
+        SaveData::from_file(file)
+    }
+
+    fn from_file(mut file: FileData) -> Result<SaveData, Error> {
+        let stats = stats::new(&file).map_err(Error::IoError)?;
+        let bosses = bosses::new(&file).map_err(Error::IoError)?;
         let mut upgrades = parse_upgrades(&file);
         let mut slots = parse_equipped_gems(&mut file, &mut upgrades);
         let inventory = Inventory::build(
@@ -51,7 +60,7 @@ impl SaveData {
         ); // Its not possible to store key items
         let username = Username::build(&file);
         let playtime = file.get_playtime();
-        let position = Pos::new(&file).unwrap();
+        let position = Pos::new(&file)?;
 
         Ok(SaveData {
             file,

@@ -1,5 +1,11 @@
-import { invoke } from "@tauri-apps/api/core";
-import * as dialog from "@tauri-apps/plugin-dialog";
+import { exportAppearance, importAppearance } from "../../utils/backend";
+import * as dialog from "../../utils/dialog";
+
+const buttonStyle = {
+  padding: "0 15px",
+  fontSize: "inherit",
+  backgroundSize: "100% 100%",
+};
 
 function Appearance() {
   return (
@@ -13,26 +19,13 @@ function Appearance() {
     >
       <button
         className="buttonBg"
-        style={{
-          padding: "0 15px",
-          fontSize: "inherit",
-          backgroundSize: "100% 100%",
-        }}
+        style={buttonStyle}
         onClick={async () => {
           try {
-            const path = await dialog.save({
-              title: "Save face file",
-            });
-
-            if (path) {
-              const success = await invoke("export_appearance", {
-                path,
-              });
-
-              await dialog.message(success);
-            }
+            dialog.downloadFile(await exportAppearance(), "face");
           } catch (error) {
             console.error(error);
+            await dialog.message("There was an error exporting the face");
           }
         }}
       >
@@ -40,29 +33,17 @@ function Appearance() {
       </button>
       <button
         className="buttonBg"
-        style={{
-          padding: "0 15px",
-          fontSize: "inherit",
-          backgroundSize: "100% 100%",
-        }}
+        style={buttonStyle}
         onClick={async () => {
           try {
-            const path = await dialog.open({
-              title: "Select a face file",
-            });
+            const file = await dialog.openFile();
 
-            if (path) {
-              const success = await invoke("import_appearance", {
-                path,
-              });
-
-              await dialog.message(success);
+            if (file) {
+              await dialog.message(await importAppearance(file));
             }
           } catch (error) {
             console.error(error);
-            await dialog.message(error, {
-              type: "error",
-            });
+            await dialog.message(error);
           }
         }}
       >

@@ -1,7 +1,7 @@
 import "./inventory.css";
 import { useEffect, useRef, useState, useContext } from "react";
 import { SaveContext } from "../../context/context";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../../utils/backend";
 import ReplaceScreen from "../../components/ReplaceScreen";
 import { getType } from "../../utils/upgrades";
 import FilterButtons from "./FilterButtons";

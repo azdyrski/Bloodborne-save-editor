@@ -1,8 +1,10 @@
-// Prevents additional console window on Windows in release, DO NOT REMOVE!!
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+use std::cell::RefCell;
 
-use std::{error::Error, fs::File, io::BufReader, sync::Mutex};
-mod data_handling;
+use serde::de::DeserializeOwned;
+use serde_json::{json, Value};
+use wasm_bindgen::prelude::*;
+
+pub mod data_handling;
 
 use data_handling::{
     appearance,
@@ -11,629 +13,362 @@ use data_handling::{
     save::SaveData,
     upgrades::Upgrade,
 };
-use serde_json::{json, Value};
-use tauri::{path::BaseDirectory, Manager};
-struct MutexSave {
-    data: Mutex<Option<SaveData>>,
+
+thread_local! {
+    static SAVE: RefCell<Option<SaveData>> = RefCell::new(None);
 }
 
-pub fn run() -> Result<(), Box<dyn Error>> {
-    #[cfg(target_os = "linux")]
-    {
-        if std::env::var("WEBKIT_DISABLE_DMABUF_RENDERER").is_err() {
-            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-        }
-        if std::env::var("WEBKIT_DISABLE_COMPOSITING_MODE").is_err() {
-            std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
-        }
-    }
-
-    tauri::Builder::default()
-        .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_shell::init())
-        .manage(MutexSave {
-            data: Mutex::new(None),
-        })
-        .invoke_handler(tauri::generate_handler![
-            make_save,
-            edit_quantity,
-            save,
-            return_weapons,
-            return_armors,
-            return_items,
-            return_gem_effects,
-            return_rune_effects,
-            transform_item,
-            edit_stat,
-            edit_effect,
-            edit_shape,
-            equip_gem,
-            unequip_gem,
-            export_appearance,
-            import_appearance,
-            set_username,
-            get_version,
-            add_item,
-            edit_slot,
-            get_isz,
-            fix_isz,
-            get_playtime,
-            set_playtime,
-            set_flag,
-            edit_coordinates,
-            teleport,
-            change_weapon_level,
-            apply_mask
-        ])
-        .run(tauri::generate_context!())?;
-
-    Ok(())
+#[wasm_bindgen(start)]
+pub fn init() {
+    console_error_panic_hook::set_once();
 }
 
-#[tauri::command]
-fn set_flag(offset: usize, new_value: u8, state_save: tauri::State<MutexSave>) {
-    let mut save_option = state_save.inner().data.lock().unwrap();
-    let save = save_option.as_mut().unwrap();
-
-    save.file.set_flag(offset, new_value);
+fn with_save<R>(f: impl FnOnce(&mut SaveData) -> Result<R, String>) -> Result<R, String> {
+    SAVE.with(|cell| {
+        let mut guard = cell.borrow_mut();
+        let save = guard.as_mut().ok_or("No save loaded")?;
+        f(save)
+    })
 }
 
-#[tauri::command]
-fn apply_mask(offset: usize, mask: u8, state_save: tauri::State<MutexSave>) {
-    let mut save_option = state_save.inner().data.lock().unwrap();
-    let save = save_option.as_mut().unwrap();
-
-    save.file.apply_mask(offset, mask);
+fn arg<T: DeserializeOwned>(args: &Value, key: &str) -> Result<T, String> {
+    serde_json::from_value(args[key].clone()).map_err(|e| format!("Invalid argument '{key}': {e}"))
 }
 
-#[tauri::command]
-fn get_isz(state_save: tauri::State<MutexSave>) -> [u8; 2] {
-    let mut save_option = state_save.inner().data.lock().unwrap();
-    let save = save_option.as_mut().unwrap();
-
-    return save.file.get_isz();
+fn to_json(save: &SaveData) -> Result<Value, String> {
+    serde_json::to_value(save).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-fn fix_isz(state_save: tauri::State<MutexSave>) -> String {
-    let mut save_option = state_save.inner().data.lock().unwrap();
-    let save = save_option.as_mut().unwrap();
-
-    save.file.fix_isz()
-}
-
-#[tauri::command]
-fn get_playtime(state_save: tauri::State<MutexSave>) -> u32 {
-    let mut save_option = state_save.inner().data.lock().unwrap();
-    let save = save_option.as_mut().unwrap();
-
-    save.file.get_playtime()
-}
-
-#[tauri::command]
-fn set_playtime(new_playtime: [u8; 4], state_save: tauri::State<MutexSave>) {
-    let mut save_option = state_save.inner().data.lock().unwrap();
-    let save = save_option.as_mut().unwrap();
-
-    save.file.set_playtime(new_playtime);
-}
-
-#[tauri::command]
-fn make_save(
-    path: &str,
-    state_save: tauri::State<MutexSave>,
-    handle: tauri::AppHandle,
-) -> Result<Value, String> {
-    let resource_path = handle
-        .path()
-        .resolve("resources/", BaseDirectory::Resource)
-        .unwrap();
-
-    match SaveData::build(path, resource_path) {
-        Ok(s) => {
-            let mut data = state_save.data.lock().unwrap();
-            *data = Some(s.clone());
-            Ok(serde_json::to_value(&s).map_err(|x| x.to_string())?)
-        }
-        Err(_) => Err("Failed to load file, make sure its a decrypted character.".to_string()),
-    }
-}
-
-#[tauri::command]
-fn edit_quantity(
-    number: u8,
-    id: u32,
-    value: u32,
-    is_storage: bool,
-    state_save: tauri::State<MutexSave>,
-) -> Result<Value, String> {
-    let mut save_option = state_save.inner().data.lock().unwrap();
-    let save = save_option.as_mut().unwrap();
-
-    if !is_storage {
-        match save
-            .inventory
-            .edit_item(&mut save.file, number, id, value, is_storage)
-        {
-            Ok(_) => Ok(serde_json::to_value(&save).map_err(|x| x.to_string())?),
-            Err(e) => Err(e.to_string()),
-        }
+fn location(is_storage: bool) -> Location {
+    if is_storage {
+        Location::Storage
     } else {
-        match save
-            .storage
-            .edit_item(&mut save.file, number, id, value, is_storage)
-        {
-            Ok(_) => Ok(serde_json::to_value(&save).map_err(|x| x.to_string())?),
-            Err(e) => Err(e.to_string()),
-        }
+        Location::Inventory
     }
 }
 
-#[tauri::command]
-fn save(path: String, state_save: tauri::State<MutexSave>) -> Result<&str, &str> {
-    let mut save_option = state_save.inner().data.lock().unwrap();
-    let save = save_option.as_mut().unwrap();
+fn resolve_upgrade(save: &mut SaveData, info: &Value) -> Result<*mut Upgrade, String> {
+    let loc = location(arg(info, "isStorage")?);
 
-    match save.file.save(&path) {
-        Ok(_) => Ok("Changes saved."),
-        Err(_) => Err("Failed to save changes."),
-    }
-}
+    let upgrade = if let Some(equipped) = info.get("equipped") {
+        let article_type: ArticleType = arg(equipped, "articleType")?;
+        let article_index: usize = arg(equipped, "articleIndex")?;
+        let slot_index: usize = arg(equipped, "slotIndex")?;
 
-#[tauri::command]
-fn return_weapons(state_save: tauri::State<MutexSave>) -> Value {
-    let save_option = state_save.inner().data.lock().unwrap();
-    let save = save_option.as_ref().unwrap();
-    let weapons_str = include_str!("../resources/weapons.json");
+        save.get_equipped_upgrade_mut(loc, article_type, article_index, slot_index)
+            .map(|u| u as *mut Upgrade)
+    } else {
+        let upgrade_type: UpgradeType = arg(info, "upgradeType")?;
+        let upgrade_index: usize = arg(info, "upgradeIndex")?;
 
-    let weapons: Value = serde_json::from_str(weapons_str).unwrap();
-
-    weapons
-}
-
-#[tauri::command]
-fn return_armors(state_save: tauri::State<MutexSave>) -> Value {
-    let save_option = state_save.inner().data.lock().unwrap();
-    let save = save_option.as_ref().unwrap();
-    let armors_str = include_str!("../resources/armors.json");
-
-    let armors: Value = serde_json::from_str(armors_str).unwrap();
-
-    armors
-}
-
-#[tauri::command]
-fn return_items(state_save: tauri::State<MutexSave>) -> Value {
-    let save_option = state_save.inner().data.lock().unwrap();
-    let save = save_option.as_ref().unwrap();
-    let upgrades_str = include_str!("../resources/items.json");
-
-    let items: Value = serde_json::from_str(upgrades_str).unwrap();
-
-    items
-}
-
-#[tauri::command]
-fn return_gem_effects(state_save: tauri::State<MutexSave>) -> Value {
-    let save_option = state_save.inner().data.lock().unwrap();
-    let save = save_option.as_ref().unwrap();
-    let upgrades_str = include_str!("../resources/upgrades.json");
-
-    let upgrade_json: Value = serde_json::from_str(upgrades_str).unwrap();
-
-    upgrade_json["gemEffects"].clone()
-}
-
-#[tauri::command]
-fn return_rune_effects(state_save: tauri::State<MutexSave>) -> Value {
-    let save_option = state_save.inner().data.lock().unwrap();
-    let save = save_option.as_ref().unwrap();
-    let upgrades_str = include_str!("../resources/upgrades.json");
-
-    let upgrade_json: Value = serde_json::from_str(upgrades_str).unwrap();
-
-    upgrade_json["runeEffects"].clone()
-}
-
-#[tauri::command]
-fn transform_item(
-    index: usize,
-    id: u32,
-    new_id: u32,
-    article_type: ArticleType,
-    is_storage: bool,
-    state_save: tauri::State<MutexSave>,
-) -> Result<Value, String> {
-    let mut save_option = state_save.inner().data.lock().unwrap();
-    let save = save_option.as_mut().unwrap();
-
-    let category = {
-        if !is_storage {
-            save.inventory.articles.get_mut(&article_type).unwrap()
-        } else {
-            save.storage.articles.get_mut(&article_type).unwrap()
-        }
+        save.get_upgrade_mut(loc, upgrade_type, upgrade_index)
+            .map(|u| u as *mut Upgrade)
     };
-    let item = category
-        .iter_mut()
-        .find(|x| x.id == id && x.index == index)
-        .unwrap();
 
-    let old_type = item.article_type;
+    upgrade.ok_or_else(|| "Upgrade not found".to_string())
+}
 
-    match item.transform(&mut save.file, new_id, is_storage) {
-        Ok(_) => {
-            // Check if the article type has changed
+/// Parses a save file and keeps it as the active save. Returns the save as JSON.
+#[wasm_bindgen]
+pub fn load_save(bytes: &[u8]) -> Result<String, String> {
+    let save = SaveData::from_bytes(bytes.to_vec())
+        .map_err(|_| "Failed to load file, make sure its a decrypted character.".to_string())?;
+    let json = serde_json::to_string(&save).map_err(|e| e.to_string())?;
+    SAVE.with(|cell| *cell.borrow_mut() = Some(save));
+    Ok(json)
+}
+
+#[wasm_bindgen]
+pub fn get_save_bytes() -> Result<Vec<u8>, String> {
+    with_save(|save| Ok(save.file.bytes.clone()))
+}
+
+#[wasm_bindgen]
+pub fn export_appearance_bytes() -> Result<Vec<u8>, String> {
+    with_save(|save| Ok(appearance::export_bytes(&save.file)))
+}
+
+#[wasm_bindgen]
+pub fn import_appearance_bytes(bytes: &[u8]) -> Result<String, String> {
+    with_save(|save| {
+        appearance::import_bytes(&mut save.file, bytes)
+            .map_err(|_| "The imported file is not a face".to_string())?;
+        Ok("Successfully imported".to_string())
+    })
+}
+
+#[wasm_bindgen]
+pub fn get_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
+/// Runs a command by name with a JSON object of camelCase arguments, returning JSON.
+#[wasm_bindgen]
+pub fn invoke(cmd: &str, args_json: &str) -> Result<String, String> {
+    let args: Value = serde_json::from_str(args_json).map_err(|e| e.to_string())?;
+    let result = dispatch(cmd, &args)?;
+    serde_json::to_string(&result).map_err(|e| e.to_string())
+}
+
+fn dispatch(cmd: &str, args: &Value) -> Result<Value, String> {
+    match cmd {
+        "return_weapons" => serde_json::from_str(include_str!("../resources/weapons.json"))
+            .map_err(|e| e.to_string()),
+        "return_armors" => serde_json::from_str(include_str!("../resources/armors.json"))
+            .map_err(|e| e.to_string()),
+        "return_items" => serde_json::from_str(include_str!("../resources/items.json"))
+            .map_err(|e| e.to_string()),
+        "return_gem_effects" | "return_rune_effects" => {
+            let upgrades: Value = serde_json::from_str(include_str!("../resources/upgrades.json"))
+                .map_err(|e| e.to_string())?;
+            let key = if cmd == "return_gem_effects" {
+                "gemEffects"
+            } else {
+                "runeEffects"
+            };
+            Ok(upgrades[key].clone())
+        }
+        "get_version" => Ok(json!(get_version())),
+
+        "set_flag" => with_save(|save| {
+            save.file.set_flag(arg(args, "offset")?, arg(args, "newValue")?);
+            Ok(Value::Null)
+        }),
+        "apply_mask" => with_save(|save| {
+            save.file.apply_mask(arg(args, "offset")?, arg(args, "mask")?);
+            Ok(Value::Null)
+        }),
+        "get_isz" => with_save(|save| Ok(json!(save.file.get_isz()))),
+        "fix_isz" => with_save(|save| Ok(json!(save.file.fix_isz()))),
+        "get_playtime" => with_save(|save| Ok(json!(save.file.get_playtime()))),
+        "set_playtime" => with_save(|save| {
+            let playtime: [u8; 4] = arg(args, "newPlaytime")?;
+            save.file.set_playtime(playtime);
+            Ok(Value::Null)
+        }),
+        "edit_stat" => with_save(|save| {
+            save.file.edit(
+                arg(args, "relOffset")?,
+                arg(args, "length")?,
+                arg(args, "times")?,
+                arg(args, "value")?,
+            );
+            Ok(Value::Null)
+        }),
+        "set_username" => with_save(|save| {
+            let name: String = arg(args, "newUsername")?;
+            save.username
+                .set(&mut save.file, name)
+                .map_err(|_| "Failed to change name".to_string())?;
+            Ok(json!("Successfully changed name"))
+        }),
+        "edit_coordinates" => with_save(|save| {
+            let (x, y, z): (f32, f32, f32) = (arg(args, "x")?, arg(args, "y")?, arg(args, "z")?);
+            save.position.coordinates.edit(&mut save.file, x, y, z);
+            Ok(Value::Null)
+        }),
+        "teleport" => with_save(|save| {
+            let (x, y, z): (f32, f32, f32) = (arg(args, "x")?, arg(args, "y")?, arg(args, "z")?);
+            let map_id: Vec<u8> = arg(args, "mapId")?;
+            if map_id.len() < 2 {
+                return Err("Invalid map id".to_string());
+            }
+            let le_map = [0, 0, map_id[1], map_id[0]];
+
+            for (i, j) in (0x04..0x08).enumerate() {
+                save.file.bytes[j] = le_map[i];
+            }
+
+            save.position.coordinates.edit(&mut save.file, x, y, z);
+            Ok(Value::Null)
+        }),
+
+        "edit_quantity" => with_save(|save| {
+            let number: u8 = arg(args, "number")?;
+            let id: u32 = arg(args, "id")?;
+            let value: u32 = arg(args, "value")?;
+            let is_storage: bool = arg(args, "isStorage")?;
+
+            let inventory = if is_storage {
+                &mut save.storage
+            } else {
+                &mut save.inventory
+            };
+            inventory
+                .edit_item(&mut save.file, number, id, value, is_storage)
+                .map_err(|e| e.to_string())?;
+            to_json(save)
+        }),
+        "add_item" => with_save(|save| {
+            let id: u32 = arg(args, "id")?;
+            let quantity: u32 = arg(args, "quantity")?;
+            let is_storage: bool = arg(args, "isStorage")?;
+
+            let inventory = if is_storage {
+                &mut save.storage
+            } else {
+                &mut save.inventory
+            };
+            inventory
+                .add_item(&mut save.file, id, quantity, is_storage)
+                .map_err(|_| "Failed to add the item".to_string())?;
+            to_json(save)
+        }),
+        "transform_item" => with_save(|save| {
+            let index: usize = arg(args, "index")?;
+            let id: u32 = arg(args, "id")?;
+            let new_id: u32 = arg(args, "newId")?;
+            let article_type: ArticleType = arg(args, "articleType")?;
+            let is_storage: bool = arg(args, "isStorage")?;
+
+            let inventory = if is_storage {
+                &mut save.storage
+            } else {
+                &mut save.inventory
+            };
+            let item = inventory
+                .articles
+                .get_mut(&article_type)
+                .and_then(|c| c.iter_mut().find(|x| x.id == id && x.index == index))
+                .ok_or("Item not found")?;
+
+            let old_type = item.article_type;
+            item.transform(&mut save.file, new_id, is_storage)
+                .map_err(|e| e.to_string())?;
+
+            // Move the item to its new category if the type changed
             if item.article_type != old_type {
                 let moved_item = item.clone();
 
-                // Remove the item from the old category
                 if let Some(old_category) = save.inventory.articles.get_mut(&old_type) {
                     old_category.retain(|x| x.index != index);
                 }
 
-                // Find or create the new category using item.article_type
-                let new_category = save
-                    .inventory
+                save.inventory
                     .articles
                     .entry(moved_item.article_type)
-                    .or_insert_with(Vec::new);
-
-                // Add the item to the new category
-                new_category.push(moved_item);
+                    .or_insert_with(Vec::new)
+                    .push(moved_item);
             }
 
-            Ok(serde_json::to_value(&save).map_err(|x| x.to_string())?)
-        }
-        Err(e) => Err(e.to_string()),
-    }
-}
+            to_json(save)
+        }),
+        "edit_effect" => with_save(|save| {
+            let new_effect_id: u32 = arg(args, "newEffectId")?;
+            let index: usize = arg(args, "index")?;
+            let upgrade = resolve_upgrade(save, &args["info"])?;
 
-#[tauri::command]
-fn edit_stat(
-    rel_offset: isize,
-    length: usize,
-    times: usize,
-    value: u32,
-    state_save: tauri::State<MutexSave>,
-) {
-    let mut save_option = state_save.inner().data.lock().unwrap();
-    let save = save_option.as_mut().unwrap();
+            // SAFETY: the pointer comes from `save` and `save.file` is a disjoint field.
+            unsafe {
+                (*upgrade)
+                    .change_effect(&mut save.file, new_effect_id, index)
+                    .map_err(|_| "Failed to edit the upgrade's effect".to_string())?;
+            }
+            to_json(save)
+        }),
+        "edit_shape" => with_save(|save| {
+            let new_shape: String = arg(args, "newShape")?;
+            let upgrade = resolve_upgrade(save, &args["info"])?;
 
-    save.file.edit(rel_offset, length, times, value);
-}
+            // SAFETY: the pointer comes from `save` and `save.file` is a disjoint field.
+            unsafe {
+                (*upgrade)
+                    .change_shape(&mut save.file, new_shape)
+                    .map_err(|_| "Failed to edit the upgrade's shape".to_string())?;
+            }
+            to_json(save)
+        }),
+        "edit_slot" => with_save(|save| {
+            let loc = location(arg(args, "isStorage")?);
+            let article_type: ArticleType = arg(args, "articleType")?;
+            let article_index: usize = arg(args, "articleIndex")?;
+            let slot_index: usize = arg(args, "slotIndex")?;
+            let new_shape: SlotShape = arg(args, "newShape")?;
 
-#[tauri::command]
-fn edit_effect(
-    new_effect_id: u32,
-    index: usize,
-    info: Value,
-    state_save: tauri::State<MutexSave>,
-) -> Result<Value, String> {
-    let mut save_option = state_save.inner().data.lock().unwrap();
-    let save: &mut SaveData = save_option.as_mut().unwrap();
-    let upgrade: Option<*mut Upgrade>;
+            let article = save
+                .get_article_mut(loc, article_type, article_index)
+                .map(|a| a as *mut Article)
+                .ok_or("Article not found")?;
 
-    let location: Location = {
-        let is_storage: bool = serde_json::from_value(info["isStorage"].clone()).unwrap();
+            // SAFETY: the pointer comes from `save` and `save.file` is a disjoint field.
+            unsafe {
+                (*article)
+                    .change_slot_shape(&mut save.file, slot_index, new_shape)
+                    .map_err(|e| e.to_string())?;
+            }
+            to_json(save)
+        }),
+        "equip_gem" => with_save(|save| {
+            let upgrade_index: usize = arg(args, "upgradeIndex")?;
+            let article_type: ArticleType = arg(args, "articleType")?;
+            let article_index: usize = arg(args, "articleIndex")?;
+            let slot_index: usize = arg(args, "slotIndex")?;
+            let is_storage: bool = arg(args, "isStorage")?;
 
-        if is_storage {
-            Location::Storage
-        } else {
-            Location::Inventory
-        }
-    };
+            let inventory = if is_storage {
+                &mut save.storage
+            } else {
+                &mut save.inventory
+            };
+            inventory
+                .equip_gem(
+                    &mut save.file,
+                    upgrade_index,
+                    article_type,
+                    article_index,
+                    slot_index,
+                    is_storage,
+                )
+                .map_err(|e| e.to_string())?;
+            to_json(save)
+        }),
+        "unequip_gem" => with_save(|save| {
+            let article_type: ArticleType = arg(args, "articleType")?;
+            let article_index: usize = arg(args, "articleIndex")?;
+            let slot_index: usize = arg(args, "slotIndex")?;
+            let is_storage: bool = arg(args, "isStorage")?;
 
-    if let Some(equipped) = info.get("equipped") {
-        let article_type: ArticleType =
-            serde_json::from_value(equipped["articleType"].clone()).unwrap();
-        let article_index: usize =
-            serde_json::from_value(equipped["articleIndex"].clone()).unwrap();
-        let slot_index: usize = serde_json::from_value(equipped["slotIndex"].clone()).unwrap();
+            let inventory = if is_storage {
+                &mut save.storage
+            } else {
+                &mut save.inventory
+            };
+            inventory
+                .unequip_gem(
+                    &mut save.file,
+                    article_type,
+                    article_index,
+                    slot_index,
+                    is_storage,
+                )
+                .map_err(|e| e.to_string())?;
+            to_json(save)
+        }),
+        "change_weapon_level" => with_save(|save| {
+            let article_type: ArticleType = arg(args, "articleType")?;
+            let article_index: usize = arg(args, "articleIndex")?;
+            let slot_index: usize = arg(args, "slotIndex")?;
+            let is_storage: bool = arg(args, "isStorage")?;
+            let level: u8 = arg(args, "level")?;
 
-        upgrade = save
-            .get_equipped_upgrade_mut(location, article_type, article_index, slot_index)
-            .map(|u| u as *mut _);
-    } else {
-        let upgrade_type: UpgradeType =
-            serde_json::from_value(info["upgradeType"].clone()).unwrap();
-        let upgrade_index: usize = serde_json::from_value(info["upgradeIndex"].clone()).unwrap();
+            let inventory = if is_storage {
+                &mut save.storage
+            } else {
+                &mut save.inventory
+            };
+            let weapon = inventory
+                .change_weapon_level(
+                    &mut save.file,
+                    article_type,
+                    article_index,
+                    slot_index,
+                    is_storage,
+                    level,
+                )
+                .map_err(|e| e.to_string())?;
 
-        upgrade = save
-            .get_upgrade_mut(location, upgrade_type, upgrade_index)
-            .map(|u| u as *mut _);
-    }
-
-    unsafe {
-        match (*upgrade.unwrap()).change_effect(&mut save.file, new_effect_id, index) {
-            Ok(_) => Ok(serde_json::to_value(&save).map_err(|x| x.to_string())?),
-            Err(_) => Err("Failed to edit the upgrade's effect".to_string()),
-        }
-    }
-}
-
-#[tauri::command]
-fn edit_shape(
-    new_shape: String,
-    info: Value,
-    state_save: tauri::State<MutexSave>,
-) -> Result<Value, String> {
-    let mut save_option = state_save.inner().data.lock().unwrap();
-    let save: &mut SaveData = save_option.as_mut().unwrap();
-    let upgrade: Option<*mut Upgrade>;
-
-    let location: Location = {
-        let is_storage: bool = serde_json::from_value(info["isStorage"].clone()).unwrap();
-
-        if is_storage {
-            Location::Storage
-        } else {
-            Location::Inventory
-        }
-    };
-
-    if let Some(equipped) = info.get("equipped") {
-        let article_type: ArticleType =
-            serde_json::from_value(equipped["articleType"].clone()).unwrap();
-        let article_index: usize =
-            serde_json::from_value(equipped["articleIndex"].clone()).unwrap();
-        let slot_index: usize = serde_json::from_value(equipped["slotIndex"].clone()).unwrap();
-
-        upgrade = save
-            .get_equipped_upgrade_mut(location, article_type, article_index, slot_index)
-            .map(|u| u as *mut _);
-    } else {
-        let upgrade_type: UpgradeType =
-            serde_json::from_value(info["upgradeType"].clone()).unwrap();
-        let upgrade_index: usize = serde_json::from_value(info["upgradeIndex"].clone()).unwrap();
-
-        upgrade = save
-            .get_upgrade_mut(location, upgrade_type, upgrade_index)
-            .map(|u| u as *mut _);
-    }
-
-    unsafe {
-        match (*upgrade.unwrap()).change_shape(&mut save.file, new_shape) {
-            Ok(_) => Ok(serde_json::to_value(&save).map_err(|x| x.to_string())?),
-            Err(_) => Err("Failed to edit the upgrade's shape".to_string()),
-        }
-    }
-}
-
-#[tauri::command]
-fn edit_slot(
-    is_storage: bool,
-    article_type: ArticleType,
-    article_index: usize,
-    slot_index: usize,
-    new_shape: SlotShape,
-    state_save: tauri::State<MutexSave>,
-) -> Result<Value, String> {
-    let mut save_option = state_save.inner().data.lock().unwrap();
-    let save: &mut SaveData = save_option.as_mut().unwrap();
-
-    let location = if is_storage {
-        Location::Storage
-    } else {
-        Location::Inventory
-    };
-    let article: Option<*mut Article>;
-
-    article = save
-        .get_article_mut(location, article_type, article_index)
-        .map(|u| u as *mut _);
-
-    unsafe {
-        match (*article.unwrap()).change_slot_shape(&mut save.file, slot_index, new_shape) {
-            Ok(_) => Ok(serde_json::to_value(&save).map_err(|x| x.to_string())?),
-            Err(e) => Err(e.to_string()),
-        }
-    }
-}
-
-#[tauri::command]
-fn equip_gem(
-    upgrade_index: usize,
-    article_type: ArticleType,
-    article_index: usize,
-    slot_index: usize,
-    is_storage: bool,
-    state_save: tauri::State<MutexSave>,
-) -> Result<Value, String> {
-    let mut save_option = state_save.inner().data.lock().unwrap();
-    let save = save_option.as_mut().unwrap();
-
-    let result = if is_storage {
-        save.storage.equip_gem(
-            &mut save.file,
-            upgrade_index,
-            article_type,
-            article_index,
-            slot_index,
-            is_storage,
-        )
-    } else {
-        save.inventory.equip_gem(
-            &mut save.file,
-            upgrade_index,
-            article_type,
-            article_index,
-            slot_index,
-            is_storage,
-        )
-    };
-
-    match result {
-        Ok(_) => Ok(serde_json::to_value(&save).map_err(|x| x.to_string())?),
-        Err(e) => Err(e.to_string()),
-    }
-}
-
-#[tauri::command]
-fn unequip_gem(
-    article_type: ArticleType,
-    article_index: usize,
-    slot_index: usize,
-    is_storage: bool,
-    state_save: tauri::State<MutexSave>,
-) -> Result<Value, String> {
-    let mut save_option = state_save.inner().data.lock().unwrap();
-    let save = save_option.as_mut().unwrap();
-
-    let result = if is_storage {
-        save.storage.unequip_gem(
-            &mut save.file,
-            article_type,
-            article_index,
-            slot_index,
-            is_storage,
-        )
-    } else {
-        save.inventory.unequip_gem(
-            &mut save.file,
-            article_type,
-            article_index,
-            slot_index,
-            is_storage,
-        )
-    };
-
-    match result {
-        Ok(_) => Ok(serde_json::to_value(&save).map_err(|x| x.to_string())?),
-        Err(e) => Err(e.to_string()),
-    }
-}
-
-#[tauri::command]
-fn export_appearance(path: &str, state_save: tauri::State<MutexSave>) -> Result<String, String> {
-    let mut save_option = state_save.inner().data.lock().unwrap();
-    let save = save_option.as_mut().unwrap();
-
-    match appearance::export(&save.file, path) {
-        Ok(_) => Ok("Successfully exported".to_string()),
-        Err(_) => Err("There was an error exporting the face".to_string()),
-    }
-}
-
-#[tauri::command]
-fn import_appearance(path: &str, state_save: tauri::State<MutexSave>) -> Result<String, String> {
-    let mut save_option = state_save.inner().data.lock().unwrap();
-    let save: &mut SaveData = save_option.as_mut().unwrap();
-
-    match appearance::import(&mut save.file, path) {
-        Ok(_) => Ok("Successfully imported".to_string()),
-        Err(_) => Err("The imported file is not a face".to_string()),
-    }
-}
-
-#[tauri::command]
-fn set_username(
-    new_username: String,
-    state_save: tauri::State<MutexSave>,
-) -> Result<String, String> {
-    let mut save_option = state_save.inner().data.lock().unwrap();
-    let save = save_option.as_mut().unwrap();
-
-    match save.username.set(&mut save.file, new_username) {
-        Ok(_) => Ok("Successfully changed name".to_string()),
-        Err(_) => Err("Failed to change name".to_string()),
-    }
-}
-
-#[tauri::command]
-fn get_version() -> String {
-    env!("CARGO_PKG_VERSION").to_string()
-}
-
-#[tauri::command]
-fn add_item(
-    id: u32,
-    quantity: u32,
-    is_storage: bool,
-    state_save: tauri::State<MutexSave>,
-) -> Result<Value, String> {
-    let mut save_option = state_save.inner().data.lock().unwrap();
-    let save = save_option.as_mut().unwrap();
-
-    if !is_storage {
-        match save
-            .inventory
-            .add_item(&mut save.file, id, quantity, is_storage)
-        {
-            Ok(_) => Ok(serde_json::to_value(&save).map_err(|x| x.to_string())?),
-            Err(_) => Err("Failed to add the item".to_string()),
-        }
-    } else {
-        match save
-            .storage
-            .add_item(&mut save.file, id, quantity, is_storage)
-        {
-            Ok(_) => Ok(serde_json::to_value(&save).map_err(|x| x.to_string())?),
-            Err(_) => Err("Failed to add the item".to_string()),
-        }
-    }
-}
-
-#[tauri::command]
-fn edit_coordinates(x: f32, y: f32, z: f32, state_save: tauri::State<MutexSave>) {
-    let mut save_option = state_save.inner().data.lock().unwrap();
-    let save = save_option.as_mut().unwrap();
-
-    save.position.coordinates.edit(&mut save.file, x, y, z);
-}
-
-#[tauri::command]
-fn teleport(x: f32, y: f32, z: f32, map_id: Vec<u8>, state_save: tauri::State<MutexSave>) {
-    let mut save_option = state_save.inner().data.lock().unwrap();
-    let save: &mut SaveData = save_option.as_mut().unwrap();
-    let le_map = [00, 00, map_id[1], map_id[0]];
-
-    for (i, j) in (0x04..0x08).enumerate() {
-        save.file.bytes[j] = le_map[i];
-    }
-
-    save.position.coordinates.edit(&mut save.file, x, y, z);
-}
-
-#[tauri::command]
-fn change_weapon_level(
-    article_type: ArticleType,
-    article_index: usize,
-    slot_index: usize,
-    is_storage: bool,
-    level: u8,
-    state_save: tauri::State<MutexSave>,
-) -> Result<Value, String> {
-    let mut save_option = state_save.inner().data.lock().unwrap();
-    let save: &mut SaveData = save_option.as_mut().unwrap();
-
-    let result = if is_storage {
-        save.storage.change_weapon_level(
-            &mut save.file,
-            article_type,
-            article_index,
-            slot_index,
-            is_storage,
-            level,
-        )
-    } else {
-        save.inventory.change_weapon_level(
-            &mut save.file,
-            article_type,
-            article_index,
-            slot_index,
-            is_storage,
-            level,
-        )
-    };
-
-    match result {
-        Ok(weapon) => Ok(json!({
-            "save": serde_json::to_value(&save).map_err(|x| x.to_string())?,
-            "weapon": weapon
-        })),
-        Err(e) => Err(e.to_string()),
+            Ok(json!({ "save": to_json(save)?, "weapon": weapon }))
+        }),
+        _ => Err(format!("Unknown command: {cmd}")),
     }
 }

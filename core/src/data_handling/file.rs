@@ -27,16 +27,22 @@ impl FileData {
         let mut bytes = Vec::new();
         file.read_to_end(&mut bytes).map_err(Error::IoError)?;
 
+        let file_data = FileData::from_bytes(bytes, resources_path)?;
+
+        // Create a backup
+        let backup_path = format!("{}.bak", path);
+        fs::copy(path, backup_path).map_err(Error::IoError)?;
+
+        Ok(file_data)
+    }
+
+    pub fn from_bytes(bytes: Vec<u8>, resources_path: PathBuf) -> Result<FileData, Error> {
         if bytes.is_empty() {
             return Err(Error::CustomError("The selected file is empty."));
         }
 
         //Search the offsets
         let offsets = Offsets::build(&bytes)?;
-
-        // Create a backup
-        let backup_path = format!("{}.bak", path);
-        fs::copy(path, backup_path).map_err(Error::IoError)?;
 
         Ok(FileData {
             bytes,

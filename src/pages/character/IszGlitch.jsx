@@ -1,6 +1,6 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../../utils/backend";
 import { useEffect, useState } from "react";
-import * as dialog from "@tauri-apps/plugin-dialog";
+import * as dialog from "../../utils/dialog";
 
 function IszGlitch() {
   const [isz, setIsz] = useState([]);

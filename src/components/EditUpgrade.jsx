@@ -1,5 +1,5 @@
 import { useContext, useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../utils/backend";
 import { getGemPath, getRunePath, getUnique } from "../utils/upgrades";
 import { SaveContext } from "../context/context";
 import { ItemsContext } from "../context/itemsContext";

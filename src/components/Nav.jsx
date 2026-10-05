@@ -1,35 +1,25 @@
-import { invoke } from "@tauri-apps/api/core";
-import { basename } from "@tauri-apps/api/path";
+import { getSaveBytes, loadSave } from "../utils/backend";
 import { useState } from "react";
-import * as dialog from "@tauri-apps/plugin-dialog";
+import * as dialog from "../utils/dialog";
 
 function Nav({ setLoading, setSave, save }) {
   const [name, setName] = useState("");
 
   async function readFile() {
     try {
-      const selectedPath = await dialog.open({
-        multiple: false,
-        title: "Character data",
-      });
-      if (!selectedPath) return;
+      const file = await dialog.openFile();
+      if (!file) return;
       if (save) setSave(null);
       setLoading(true);
 
-      const parsedSave = await invoke("make_save", {
-        path: selectedPath,
-      });
+      const parsedSave = await loadSave(file);
       setLoading(false);
       setSave(parsedSave);
-      setName(await basename(selectedPath));
+      setName(file.name);
     } catch (error) {
       console.error(error);
       await dialog.message(
         "Could not parse file, make sure it is a decrypted save file",
-        {
-          title: "Failed to parse save",
-          kind: "error",
-        },
       );
       setLoading(false);
     }
@@ -37,16 +27,7 @@ function Nav({ setLoading, setSave, save }) {
 
   async function saveChanges() {
     try {
-      const path = await dialog.save({
-        title: "Save changes",
-        defaultPath: name,
-      });
-
-      const saved = await invoke("save", {
-        save: JSON.stringify(save),
-        path: path,
-      });
-      await dialog.message(saved);
+      dialog.downloadFile(await getSaveBytes(), name || "save");
     } catch (error) {
       console.log(error);
     }

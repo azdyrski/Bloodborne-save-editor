@@ -1,5 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
-import { message } from "@tauri-apps/plugin-dialog";
+import { invoke } from "../../utils/backend";
+import { message } from "../../utils/dialog";
 import { useEffect, useRef, useState } from "react";
 
 function Flag({ label, offset, values, info, isMask = false }) {

@@ -4,6 +4,10 @@
 
 <h1 align="center">Bloodborne Save Editor</h1>
 
+## About this fork
+
+This fork compiles the save-editing core to WebAssembly and adds browser support. Save files are processed locally in your browser and are not uploaded.
+
 <p align="center">
   <img src="https://img.shields.io/github/downloads/Noxde/Bloodborne-save-editor/total">
   <img src="https://img.shields.io/github/downloads-pre/Noxde/Bloodborne-save-editor/latest/total">
