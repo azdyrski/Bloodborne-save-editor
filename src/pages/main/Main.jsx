@@ -127,7 +127,7 @@ const Main = ({ save, setSave, loading, setLoading, setName }) => {
               </a>{" "}
               to learn more.
               <p></p>
-              <p>
+              <p style={{ marginTop: "1.5rem" }}>
                 Don't have a save? Click{" "}
                 <a
                   style={{ textDecoration: "underline", cursor: "pointer" }}
