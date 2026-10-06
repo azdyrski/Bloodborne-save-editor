@@ -2,6 +2,7 @@
 
 This fork compiles the save-editing core to WebAssembly and adds browser support. Save files are processed locally in your browser and are not uploaded.
 
+Hosted version available at <a href="https://evolvedonline.com/projects/bloodborne/">https://evolvedonline.com/projects/bloodborne/</a>
 
 ## Original project readme below
 
