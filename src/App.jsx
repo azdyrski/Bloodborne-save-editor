@@ -9,6 +9,7 @@ import { ImagesProvider } from "./context/imagesContext";
 function App() {
   const [save, setSave] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [name, setName] = useState("");
 
   useEffect(() => {
     updateZoom();
@@ -33,9 +34,21 @@ function App() {
   return (
     <div className="App">
       <Router>
-        <Nav setLoading={setLoading} save={save} setSave={setSave} />
+        <Nav
+          setLoading={setLoading}
+          save={save}
+          setSave={setSave}
+          name={name}
+          setName={setName}
+        />
         <ImagesProvider>
-          <Main save={save} setSave={setSave} loading={loading} />
+          <Main
+            save={save}
+            setSave={setSave}
+            loading={loading}
+            setLoading={setLoading}
+            setName={setName}
+          />
         </ImagesProvider>
       </Router>
     </div>

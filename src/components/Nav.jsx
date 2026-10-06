@@ -1,10 +1,7 @@
 import { getSaveBytes, loadSave } from "../utils/backend";
-import { useState } from "react";
 import * as dialog from "../utils/dialog";
 
-function Nav({ setLoading, setSave, save }) {
-  const [name, setName] = useState("");
-
+function Nav({ setLoading, setSave, save, name, setName }) {
   async function readFile() {
     try {
       const file = await dialog.openFile();

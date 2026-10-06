@@ -10,10 +10,28 @@ import { ImagesContext } from "../../context/imagesContext";
 import EquippedGems from "./EquippedGems";
 import Bosses from "../bosses/Bosses";
 import Flags from "../flags/Flags";
+import { loadSave } from "../../utils/backend";
+import * as dialog from "../../utils/dialog";
 
-const Main = ({ save, setSave, loading }) => {
+const Main = ({ save, setSave, loading, setLoading, setName }) => {
   const location = useLocation();
   const { loading: loadingImages } = useContext(ImagesContext);
+
+  async function createSave() {
+    try {
+      setLoading(true);
+      const res = await fetch("default-save/userdata0001");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const parsedSave = await loadSave(await res.blob());
+      setSave(parsedSave);
+      setName("userdata0001");
+    } catch (error) {
+      console.error(error);
+      await dialog.message("Could not load the default save");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <>
@@ -108,6 +126,16 @@ const Main = ({ save, setSave, loading }) => {
                 here
               </a>{" "}
               to learn more.
+              <p>
+                Don't have a save? Click{" "}
+                <a
+                  style={{ textDecoration: "underline", cursor: "pointer" }}
+                  onClick={createSave}
+                >
+                  Create
+                </a>{" "}
+                to start from a new default save. (Level 4 character, just woken up)
+              </p>
             </div>
           ) : null}
         </SaveContext.Provider>
