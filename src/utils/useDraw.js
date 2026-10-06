@@ -230,7 +230,7 @@ function useDraw() {
     const { item_name: name, item_img: image, item_desc: note } = item;
 
     // const thumbnail = await loadImage(
-    //   "/assets/itemImages/" + image || "empty.png"
+    //   "assets/itemImages/" + image || "empty.png"
     // );
     const thumbnail = context.items[image || "empty.png"];
 
@@ -288,9 +288,9 @@ function useDraw() {
     const normalized = name.toLowerCase().replaceAll(" ", "_");
 
     if (shape === "Oath") {
-      return `/assets/runes/oath/${normalized}.png`;
+      return `assets/runes/oath/${normalized}.png`;
     } else {
-      return `/assets/runes/${removeRunePrefix(normalized)}/${rating}.png`;
+      return `assets/runes/${removeRunePrefix(normalized)}/${rating}.png`;
     }
   }
 
@@ -324,10 +324,10 @@ function useDraw() {
   }
 
   function getGemPath(effects, shape, level, unique, cursed) {
-    if (unique) return `/assets/gems/unique/${unique.image}.png`;
+    if (unique) return `assets/gems/unique/${unique.image}.png`;
 
     const color = getGemColor(effects[0][1]);
-    return `/assets/gems/${shape.toLowerCase()}/${color}/${
+    return `assets/gems/${shape.toLowerCase()}/${color}/${
       cursed ? "cursed_" : ""
     }${level}.png`;
   }

@@ -16,9 +16,9 @@ function getRunePath(name, shape, rating) {
   const normalized = name.toLowerCase().replaceAll(" ", "_");
 
   if (shape === "Oath") {
-    return `/assets/runes/oath/${normalized}.png`;
+    return `assets/runes/oath/${normalized}.png`;
   } else {
-    return `/assets/runes/${removeRunePrefix(normalized)}/${rating}.png`;
+    return `assets/runes/${removeRunePrefix(normalized)}/${rating}.png`;
   }
 }
 
@@ -52,11 +52,11 @@ function getUnique(primaryEffect, shape, source) {
 }
 
 function getGemPath(effects, shape, level, unique) {
-  if (unique) return `/assets/gems/unique/${unique.image}.png`;
+  if (unique) return `assets/gems/unique/${unique.image}.png`;
 
   const color = getGemColor(effects[0][1]);
   const cursed = isCursed(effects);
-  return `/assets/gems/${shape.toLowerCase()}/${color}/${
+  return `assets/gems/${shape.toLowerCase()}/${color}/${
     cursed ? "cursed_" : ""
   }${level}.png`;
 }

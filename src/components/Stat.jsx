@@ -19,7 +19,7 @@ function Stat({ stat, editedStats, setEditedStats, width }) {
         width={32}
         height={32}
         style={{ marginRight: "10px" }}
-        src={`/assets/stats/${stat.name.toLowerCase()}.png`}
+        src={`assets/stats/${stat.name.toLowerCase()}.png`}
         alt=""
       />
       <div

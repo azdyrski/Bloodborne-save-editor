@@ -36,7 +36,7 @@ function ShapeSelector({ shape, isStorage, article, setArticle, slotIndex }) {
           right: "1px",
           top: "1px",
           cursor: "pointer",
-          backgroundImage: "url(/assets/shape_bg.png)",
+          backgroundImage: "url(assets/shape_bg.png)",
           backgroundSize: "contain",
         }}
         onClick={() => setOpen((prev) => !prev)}
@@ -51,7 +51,7 @@ function ShapeSelector({ shape, isStorage, article, setArticle, slotIndex }) {
               left: 1,
               zIndex: 10,
             }}
-            src={`/assets/${selected.toLowerCase()}.png`}
+            src={`assets/${selected.toLowerCase()}.png`}
             width="48px"
             alt=""
           />
@@ -80,7 +80,7 @@ function ShapeSelector({ shape, isStorage, article, setArticle, slotIndex }) {
                     display: "block",
                     zIndex: 10,
                   }}
-                  src={`/assets/${
+                  src={`assets/${
                     x === "Closed" ? "shape_bg" : x.toLowerCase()
                   }.png`}
                   width="48px"

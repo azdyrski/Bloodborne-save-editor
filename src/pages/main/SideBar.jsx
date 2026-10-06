@@ -1,23 +1,24 @@
 import { useContext } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { SaveContext } from "../../context/context";
 
 function SideBar() {
   const { save } = useContext(SaveContext);
+  const { pathname } = useLocation();
 
   return (
     <div id="sideBar">
       <ul>
         <li
           className={
-            save && document.location.pathname.match(/^\/$/) ? "selected" : ""
+            save && pathname.match(/^\/$/) ? "selected" : ""
           }
         >
           <Link to={"/"}>Inventory</Link>
         </li>
         <li
           className={
-            save && document.location.pathname.match(/storage/)
+            save && pathname.match(/storage/)
               ? "selected"
               : ""
           }
@@ -26,14 +27,14 @@ function SideBar() {
         </li>
         <li
           className={
-            save && document.location.pathname.match(/stats/) ? "selected" : ""
+            save && pathname.match(/stats/) ? "selected" : ""
           }
         >
           <Link to={"/stats"}>Stats</Link>
         </li>
         <li
           className={
-            save && document.location.pathname.match(/character/)
+            save && pathname.match(/character/)
               ? "selected"
               : ""
           }
@@ -42,14 +43,14 @@ function SideBar() {
         </li>
         <li
           className={
-            save && document.location.pathname.match(/bosses/) ? "selected" : ""
+            save && pathname.match(/bosses/) ? "selected" : ""
           }
         >
           <Link to={"/bosses"}>Bosses</Link>
         </li>
         <li
           className={
-            save && document.location.pathname.match(/flags/) ? "selected" : ""
+            save && pathname.match(/flags/) ? "selected" : ""
           }
         >
           <Link to={"/flags"}>Flags</Link>
