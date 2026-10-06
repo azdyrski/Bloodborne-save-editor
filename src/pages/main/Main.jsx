@@ -126,6 +126,7 @@ const Main = ({ save, setSave, loading, setLoading, setName }) => {
                 here
               </a>{" "}
               to learn more.
+              <p></p>
               <p>
                 Don't have a save? Click{" "}
                 <a
@@ -136,6 +137,7 @@ const Main = ({ save, setSave, loading, setLoading, setName }) => {
                 </a>{" "}
                 to start from a new default save. (Level 4 character, just woken up)
               </p>
+              <p>Default character is setup as the second save slot, userdata0001 for second slot, userdata0000 for first character slot. Change downloaded save files according to your slot preference.</p>
             </div>
           ) : null}
         </SaveContext.Provider>
